@@ -1,0 +1,29 @@
+# Template: place this in each mirror repo as .github/workflows/notify-monorepo.yml
+#
+# Uses the org-wide GIT_TOKEN secret (PAT with repo scope).
+name: Notify Monorepo
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  notify:
+    name: Trigger monorepo sync
+    runs-on: ubuntu-latest
+    # Only trigger if the push was NOT from the monorepo sync bot
+    if: github.actor != 'github-actions[bot]'
+    steps:
+      - name: Dispatch to monorepo
+        run: |
+          curl -sf -X POST \
+            -H "Authorization: token ${{ secrets.GIT_TOKEN }}" \
+            -H "Accept: application/vnd.github.v3+json" \
+            "https://api.github.com/repos/sferarc/pgbeam/dispatches" \
+            -d '{
+              "event_type": "mirror-push",
+              "client_payload": {
+                "mirror": "${{ github.event.repository.name }}",
+                "sha": "${{ github.sha }}"
+              }
+            }'
