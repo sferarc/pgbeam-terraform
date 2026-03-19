@@ -86,14 +86,7 @@ func (p *pgbeamProvider) Configure(ctx context.Context, req provider.ConfigureRe
 }
 
 func (p *pgbeamProvider) Resources(_ context.Context) []func() resource.Resource {
-	return []func() resource.Resource{
-		NewProjectResource,
-		NewDatabaseResource,
-		NewReplicaResource,
-		NewCustomDomainResource,
-		NewCacheRuleResource,
-		NewSpendLimitResource,
-	}
+	return pgbeamResources()
 }
 
 func (p *pgbeamProvider) DataSources(_ context.Context) []func() datasource.DataSource {
