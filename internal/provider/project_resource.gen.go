@@ -121,7 +121,7 @@ func (r *projectResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 				Optional:    true,
 			},
 			"allowed_cidrs": schema.ListAttribute{
-				Description: "IP allowlist as CIDR ranges (e.g., [\"10.0.0.0/8\", \"203.0.113.5/32\"]). When non-empty, only connections from matching IPs are accepted. Empty array means all IPs are allowed (default).\n",
+				Description: "IP filtering rules as CIDR ranges with optional labels. When non-empty, only connections from matching IPs are accepted. Empty array means all IPs are allowed (default). Both IPv4 (e.g. 10.0.0.0/8) and IPv6 (e.g. 2001:db8::/32) are supported.\n",
 				Optional:    true,
 				ElementType: types.StringType,
 			},
