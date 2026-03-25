@@ -110,15 +110,24 @@ func (r *projectResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 			},
 			"queries_per_second": schema.Int64Attribute{
 				Description: "Maximum queries per second for this project. 0 means unlimited.",
-				Optional:    true,
+				Computed:    true,
+				PlanModifiers: []planmodifier.Int64{
+					int64planmodifier.UseStateForUnknown(),
+				},
 			},
 			"burst_size": schema.Int64Attribute{
 				Description: "Burst allowance above the steady-state rate. 0 uses queries_per_second as burst.",
-				Optional:    true,
+				Computed:    true,
+				PlanModifiers: []planmodifier.Int64{
+					int64planmodifier.UseStateForUnknown(),
+				},
 			},
 			"max_connections": schema.Int64Attribute{
 				Description: "Maximum concurrent proxy connections. 0 means unlimited.",
-				Optional:    true,
+				Computed:    true,
+				PlanModifiers: []planmodifier.Int64{
+					int64planmodifier.UseStateForUnknown(),
+				},
 			},
 			"allowed_cidrs": schema.ListAttribute{
 				Description: "IP filtering rules as CIDR ranges with optional labels. When non-empty, only connections from matching IPs are accepted. Empty array means all IPs are allowed (default). Both IPv4 (e.g. 10.0.0.0/8) and IPv6 (e.g. 2001:db8::/32) are supported.\n",
@@ -214,21 +223,6 @@ func (r *projectResource) Create(ctx context.Context, req resource.CreateRequest
 
 	updateReq := pgbeam.UpdateProjectRequest{}
 	needsPostCreateUpdate := false
-	if !plan.QueriesPerSecond.IsNull() && !plan.QueriesPerSecond.IsUnknown() {
-		v := int32(plan.QueriesPerSecond.ValueInt64())
-		updateReq.QueriesPerSecond = &v
-		needsPostCreateUpdate = true
-	}
-	if !plan.BurstSize.IsNull() && !plan.BurstSize.IsUnknown() {
-		v := int32(plan.BurstSize.ValueInt64())
-		updateReq.BurstSize = &v
-		needsPostCreateUpdate = true
-	}
-	if !plan.MaxConnections.IsNull() && !plan.MaxConnections.IsUnknown() {
-		v := int32(plan.MaxConnections.ValueInt64())
-		updateReq.MaxConnections = &v
-		needsPostCreateUpdate = true
-	}
 	if !plan.AllowedCidrs.IsNull() && !plan.AllowedCidrs.IsUnknown() {
 		var v []string
 		resp.Diagnostics.Append(plan.AllowedCidrs.ElementsAs(ctx, &v, false)...)
@@ -324,24 +318,6 @@ func (r *projectResource) Update(ctx context.Context, req resource.UpdateRequest
 			}
 		}
 		updateReq.Tags = &v
-		hasChanges = true
-	}
-
-	if !plan.QueriesPerSecond.Equal(state.QueriesPerSecond) {
-		v := int32(plan.QueriesPerSecond.ValueInt64())
-		updateReq.QueriesPerSecond = &v
-		hasChanges = true
-	}
-
-	if !plan.BurstSize.Equal(state.BurstSize) {
-		v := int32(plan.BurstSize.ValueInt64())
-		updateReq.BurstSize = &v
-		hasChanges = true
-	}
-
-	if !plan.MaxConnections.Equal(state.MaxConnections) {
-		v := int32(plan.MaxConnections.ValueInt64())
-		updateReq.MaxConnections = &v
 		hasChanges = true
 	}
 
@@ -445,17 +421,17 @@ func (r *projectResource) mapProjectToState(ctx context.Context, state *projectR
 	if resp.QueriesPerSecond != nil {
 		state.QueriesPerSecond = types.Int64Value(int64(*resp.QueriesPerSecond))
 	} else {
-		state.QueriesPerSecond = types.Int64Null()
+		state.QueriesPerSecond = types.Int64Value(0)
 	}
 	if resp.BurstSize != nil {
 		state.BurstSize = types.Int64Value(int64(*resp.BurstSize))
 	} else {
-		state.BurstSize = types.Int64Null()
+		state.BurstSize = types.Int64Value(0)
 	}
 	if resp.MaxConnections != nil {
 		state.MaxConnections = types.Int64Value(int64(*resp.MaxConnections))
 	} else {
-		state.MaxConnections = types.Int64Null()
+		state.MaxConnections = types.Int64Value(0)
 	}
 	if resp.AllowedCidrs != nil && len(*resp.AllowedCidrs) > 0 {
 		tagValues := make([]attr.Value, len(*resp.AllowedCidrs))
