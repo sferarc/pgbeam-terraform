@@ -34,23 +34,24 @@ type projectResource struct {
 }
 
 type projectResourceModel struct {
-	ID                types.String `tfsdk:"id"`
-	OrgID             types.String `tfsdk:"org_id"`
-	Name              types.String `tfsdk:"name"`
-	Description       types.String `tfsdk:"description"`
-	Tags              types.List   `tfsdk:"tags"`
-	Cloud             types.String `tfsdk:"cloud"`
-	ProxyHost         types.String `tfsdk:"proxy_host"`
-	QueriesPerSecond  types.Int64  `tfsdk:"queries_per_second"`
-	BurstSize         types.Int64  `tfsdk:"burst_size"`
-	MaxConnections    types.Int64  `tfsdk:"max_connections"`
-	AllowedCidrs      types.List   `tfsdk:"allowed_cidrs"`
-	DatabaseCount     types.Int64  `tfsdk:"database_count"`
-	ActiveConnections types.Int64  `tfsdk:"active_connections"`
-	Status            types.String `tfsdk:"status"`
-	CreatedAt         types.String `tfsdk:"created_at"`
-	UpdatedAt         types.String `tfsdk:"updated_at"`
-	PrimaryDatabaseID types.String `tfsdk:"primary_database_id"`
+	ID                     types.String `tfsdk:"id"`
+	OrgID                  types.String `tfsdk:"org_id"`
+	Name                   types.String `tfsdk:"name"`
+	Description            types.String `tfsdk:"description"`
+	Tags                   types.List   `tfsdk:"tags"`
+	Cloud                  types.String `tfsdk:"cloud"`
+	ProxyHost              types.String `tfsdk:"proxy_host"`
+	QueriesPerSecond       types.Int64  `tfsdk:"queries_per_second"`
+	BurstSize              types.Int64  `tfsdk:"burst_size"`
+	MaxConnections         types.Int64  `tfsdk:"max_connections"`
+	AllowedCidrs           types.List   `tfsdk:"allowed_cidrs"`
+	DefaultPolicyProfileID types.String `tfsdk:"default_policy_profile_id"`
+	DatabaseCount          types.Int64  `tfsdk:"database_count"`
+	ActiveConnections      types.Int64  `tfsdk:"active_connections"`
+	Status                 types.String `tfsdk:"status"`
+	CreatedAt              types.String `tfsdk:"created_at"`
+	UpdatedAt              types.String `tfsdk:"updated_at"`
+	PrimaryDatabaseID      types.String `tfsdk:"primary_database_id"`
 }
 
 func NewProjectResource() resource.Resource {
@@ -133,6 +134,10 @@ func (r *projectResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 				Description: "IP filtering rules as CIDR ranges with optional labels. When non-empty, only connections from matching IPs are accepted. Empty array means all IPs are allowed (default). Both IPv4 (e.g. 10.0.0.0/8) and IPv6 (e.g. 2001:db8::/32) are supported.\n",
 				Optional:    true,
 				ElementType: types.StringType,
+			},
+			"default_policy_profile_id": schema.StringAttribute{
+				Description: "When set, passthrough/human connections are enforced against this policy profile.",
+				Optional:    true,
 			},
 			"database_count": schema.Int64Attribute{
 				Description: "Number of databases attached to this project.",
@@ -230,6 +235,11 @@ func (r *projectResource) Create(ctx context.Context, req resource.CreateRequest
 			return
 		}
 		updateReq.AllowedCidrs = &v
+		needsPostCreateUpdate = true
+	}
+	if !plan.DefaultPolicyProfileID.IsNull() && !plan.DefaultPolicyProfileID.IsUnknown() {
+		v := plan.DefaultPolicyProfileID.ValueString()
+		updateReq.DefaultPolicyProfileId = &v
 		needsPostCreateUpdate = true
 	}
 	if !plan.Status.IsNull() && !plan.Status.IsUnknown() {
@@ -330,6 +340,17 @@ func (r *projectResource) Update(ctx context.Context, req resource.UpdateRequest
 			}
 		}
 		updateReq.AllowedCidrs = &v
+		hasChanges = true
+	}
+
+	if !plan.DefaultPolicyProfileID.Equal(state.DefaultPolicyProfileID) {
+		if plan.DefaultPolicyProfileID.IsNull() {
+			empty := ""
+			updateReq.DefaultPolicyProfileId = &empty
+		} else {
+			v := plan.DefaultPolicyProfileID.ValueString()
+			updateReq.DefaultPolicyProfileId = &v
+		}
 		hasChanges = true
 	}
 
@@ -443,6 +464,11 @@ func (r *projectResource) mapProjectToState(ctx context.Context, state *projectR
 		state.AllowedCidrs = tagsList
 	} else if !state.AllowedCidrs.IsNull() {
 		state.AllowedCidrs = types.ListNull(types.StringType)
+	}
+	if resp.DefaultPolicyProfileId != nil {
+		state.DefaultPolicyProfileID = types.StringValue(*resp.DefaultPolicyProfileId)
+	} else {
+		state.DefaultPolicyProfileID = types.StringNull()
 	}
 	if resp.DatabaseCount != nil {
 		state.DatabaseCount = types.Int64Value(int64(*resp.DatabaseCount))
