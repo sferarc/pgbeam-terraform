@@ -102,7 +102,7 @@ func (r *projectResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 				},
 			},
 			"proxy_host": schema.StringAttribute{
-				Description: "Proxy hostname for connecting through PgBeam (e.g., myproject.aws.pgbeam.app).",
+				Description: "Proxy hostname for connecting through PgBeam (e.g., myproject.proxy.pgbeam.app).",
 				Computed:    true,
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.UseStateForUnknown(),
