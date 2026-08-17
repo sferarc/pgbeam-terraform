@@ -17,7 +17,7 @@ func main() {
 	flag.Parse()
 
 	opts := providerserver.ServeOpts{
-		Address: "registry.terraform.io/pgbeam/pgbeam",
+		Address: "registry.terraform.io/sferarc/pgbeam",
 		Debug:   debug,
 	}
 

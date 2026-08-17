@@ -15,7 +15,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
-	pgbeam "github.com/pgbeam/pgbeam-go"
+	pgbeam "go.pgbeam.com/sdk"
 )
 
 var (
@@ -43,20 +43,28 @@ type spendLimitResourceModel struct {
 	Enabled            types.Bool    `tfsdk:"enabled"`
 	CustomPricing      types.Bool    `tfsdk:"custom_pricing"`
 	SpendLimit         types.Float64 `tfsdk:"spend_limit"`
+	SpendCapped        types.Bool    `tfsdk:"spend_capped"`
+	SpendCappedAt      types.String  `tfsdk:"spend_capped_at"`
 	Limits             types.Object  `tfsdk:"limits"`
 	CreatedAt          types.String  `tfsdk:"created_at"`
 	UpdatedAt          types.String  `tfsdk:"updated_at"`
 }
 
 type limitsModel struct {
-	QueriesPerDay    types.Int64 `tfsdk:"queries_per_day"`
-	MaxProjects      types.Int64 `tfsdk:"max_projects"`
-	MaxDatabases     types.Int64 `tfsdk:"max_databases"`
-	MaxConnections   types.Int64 `tfsdk:"max_connections"`
-	QueriesPerSecond types.Int64 `tfsdk:"queries_per_second"`
-	BytesPerMonth    types.Int64 `tfsdk:"bytes_per_month"`
-	MaxQueryShapes   types.Int64 `tfsdk:"max_query_shapes"`
-	IncludedSeats    types.Int64 `tfsdk:"included_seats"`
+	QueriesPerDay           types.Int64 `tfsdk:"queries_per_day"`
+	MaxProjects             types.Int64 `tfsdk:"max_projects"`
+	MaxDatabases            types.Int64 `tfsdk:"max_databases"`
+	MaxConnections          types.Int64 `tfsdk:"max_connections"`
+	QueriesPerSecond        types.Int64 `tfsdk:"queries_per_second"`
+	BytesPerMonth           types.Int64 `tfsdk:"bytes_per_month"`
+	MaxQueryShapes          types.Int64 `tfsdk:"max_query_shapes"`
+	IncludedSeats           types.Int64 `tfsdk:"included_seats"`
+	MaxAgentCredentials     types.Int64 `tfsdk:"max_agent_credentials"`
+	AuditRetentionDays      types.Int64 `tfsdk:"audit_retention_days"`
+	SandboxMaxBranches      types.Int64 `tfsdk:"sandbox_max_branches"`
+	SandboxMaxUpstreamBytes types.Int64 `tfsdk:"sandbox_max_upstream_bytes"`
+	SandboxIdleSeconds      types.Int64 `tfsdk:"sandbox_idle_seconds"`
+	SandboxTTLSeconds       types.Int64 `tfsdk:"sandbox_ttl_seconds"`
 }
 
 func NewSpendLimitResource() resource.Resource {
@@ -65,14 +73,20 @@ func NewSpendLimitResource() resource.Resource {
 
 func limitsAttrTypes() map[string]attr.Type {
 	return map[string]attr.Type{
-		"queries_per_day":    types.Int64Type,
-		"max_projects":       types.Int64Type,
-		"max_databases":      types.Int64Type,
-		"max_connections":    types.Int64Type,
-		"queries_per_second": types.Int64Type,
-		"bytes_per_month":    types.Int64Type,
-		"max_query_shapes":   types.Int64Type,
-		"included_seats":     types.Int64Type,
+		"queries_per_day":            types.Int64Type,
+		"max_projects":               types.Int64Type,
+		"max_databases":              types.Int64Type,
+		"max_connections":            types.Int64Type,
+		"queries_per_second":         types.Int64Type,
+		"bytes_per_month":            types.Int64Type,
+		"max_query_shapes":           types.Int64Type,
+		"included_seats":             types.Int64Type,
+		"max_agent_credentials":      types.Int64Type,
+		"audit_retention_days":       types.Int64Type,
+		"sandbox_max_branches":       types.Int64Type,
+		"sandbox_max_upstream_bytes": types.Int64Type,
+		"sandbox_idle_seconds":       types.Int64Type,
+		"sandbox_ttl_seconds":        types.Int64Type,
 	}
 }
 
@@ -144,6 +158,20 @@ func (r *spendLimitResource) Schema(_ context.Context, _ resource.SchemaRequest,
 				Description: "Monthly spend limit in dollars. Null means no limit.",
 				Optional:    true,
 			},
+			"spend_capped": schema.BoolAttribute{
+				Description: "Whether the organization has hit its spend limit and agent access is paused at the proxy. Lifts automatically when usage resets for the new billing period, or immediately when the spend limit is raised or removed.",
+				Computed:    true,
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
+			},
+			"spend_capped_at": schema.StringAttribute{
+				Description: "When the spend cap was applied. Null when not capped.",
+				Computed:    true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
+			},
 			"limits": schema.SingleNestedAttribute{
 				Description: "Effective usage limits enforced for an organization plan.",
 				Computed:    true,
@@ -178,6 +206,30 @@ func (r *spendLimitResource) Schema(_ context.Context, _ resource.SchemaRequest,
 					},
 					"included_seats": schema.Int64Attribute{
 						Description: "Number of seats included in the plan.",
+						Required:    true,
+					},
+					"max_agent_credentials": schema.Int64Attribute{
+						Description: "Maximum agent credentials per organization. 0 means unlimited.",
+						Required:    true,
+					},
+					"audit_retention_days": schema.Int64Attribute{
+						Description: "Agent audit-log retention window in days.",
+						Required:    true,
+					},
+					"sandbox_max_branches": schema.Int64Attribute{
+						Description: "Maximum concurrently active instant (sandbox) branches. 0 means no limit.",
+						Required:    true,
+					},
+					"sandbox_max_upstream_bytes": schema.Int64Attribute{
+						Description: "Maximum upstream source-database size a sandbox base sync accepts, in bytes. 0 means no limit.",
+						Required:    true,
+					},
+					"sandbox_idle_seconds": schema.Int64Attribute{
+						Description: "Idle time before an instant (sandbox) branch scales to zero, in seconds.",
+						Required:    true,
+					},
+					"sandbox_ttl_seconds": schema.Int64Attribute{
+						Description: "Lifetime of an instant (sandbox) branch before the TTL sweep discards it, in seconds.",
 						Required:    true,
 					},
 				},
@@ -353,15 +405,31 @@ func (r *spendLimitResource) mapOrganizationPlanToState(ctx context.Context, sta
 	} else {
 		state.SpendLimit = types.Float64Null()
 	}
+	if resp.SpendCapped != nil {
+		state.SpendCapped = types.BoolValue(*resp.SpendCapped)
+	} else {
+		state.SpendCapped = types.BoolNull()
+	}
+	if resp.SpendCappedAt != nil {
+		state.SpendCappedAt = types.StringValue(resp.SpendCappedAt.Format(time.RFC3339))
+	} else {
+		state.SpendCappedAt = types.StringNull()
+	}
 	obj, d := types.ObjectValue(limitsAttrTypes(), map[string]attr.Value{
-		"queries_per_day":    types.Int64Value(int64(resp.Limits.QueriesPerDay)),
-		"max_projects":       types.Int64Value(int64(resp.Limits.MaxProjects)),
-		"max_databases":      types.Int64Value(int64(resp.Limits.MaxDatabases)),
-		"max_connections":    types.Int64Value(int64(resp.Limits.MaxConnections)),
-		"queries_per_second": types.Int64Value(int64(resp.Limits.QueriesPerSecond)),
-		"bytes_per_month":    types.Int64Value(int64(resp.Limits.BytesPerMonth)),
-		"max_query_shapes":   types.Int64Value(int64(resp.Limits.MaxQueryShapes)),
-		"included_seats":     types.Int64Value(int64(resp.Limits.IncludedSeats)),
+		"queries_per_day":            types.Int64Value(int64(resp.Limits.QueriesPerDay)),
+		"max_projects":               types.Int64Value(int64(resp.Limits.MaxProjects)),
+		"max_databases":              types.Int64Value(int64(resp.Limits.MaxDatabases)),
+		"max_connections":            types.Int64Value(int64(resp.Limits.MaxConnections)),
+		"queries_per_second":         types.Int64Value(int64(resp.Limits.QueriesPerSecond)),
+		"bytes_per_month":            types.Int64Value(int64(resp.Limits.BytesPerMonth)),
+		"max_query_shapes":           types.Int64Value(int64(resp.Limits.MaxQueryShapes)),
+		"included_seats":             types.Int64Value(int64(resp.Limits.IncludedSeats)),
+		"max_agent_credentials":      types.Int64Value(int64(resp.Limits.MaxAgentCredentials)),
+		"audit_retention_days":       types.Int64Value(int64(resp.Limits.AuditRetentionDays)),
+		"sandbox_max_branches":       types.Int64Value(int64(resp.Limits.SandboxMaxBranches)),
+		"sandbox_max_upstream_bytes": types.Int64Value(int64(resp.Limits.SandboxMaxUpstreamBytes)),
+		"sandbox_idle_seconds":       types.Int64Value(int64(resp.Limits.SandboxIdleSeconds)),
+		"sandbox_ttl_seconds":        types.Int64Value(int64(resp.Limits.SandboxTtlSeconds)),
 	})
 	diags.Append(d...)
 	state.Limits = obj

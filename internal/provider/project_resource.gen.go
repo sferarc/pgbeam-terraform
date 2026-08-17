@@ -11,11 +11,12 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
-	pgbeam "github.com/pgbeam/pgbeam-go"
+	pgbeam "go.pgbeam.com/sdk"
 )
 
 var (
@@ -40,12 +41,15 @@ type projectResourceModel struct {
 	Description            types.String `tfsdk:"description"`
 	Tags                   types.List   `tfsdk:"tags"`
 	Cloud                  types.String `tfsdk:"cloud"`
+	SelfHosted             types.Bool   `tfsdk:"self_hosted"`
 	ProxyHost              types.String `tfsdk:"proxy_host"`
 	QueriesPerSecond       types.Int64  `tfsdk:"queries_per_second"`
 	BurstSize              types.Int64  `tfsdk:"burst_size"`
 	MaxConnections         types.Int64  `tfsdk:"max_connections"`
 	AllowedCidrs           types.List   `tfsdk:"allowed_cidrs"`
 	DefaultPolicyProfileID types.String `tfsdk:"default_policy_profile_id"`
+	Residency              types.String `tfsdk:"residency"`
+	AgentsDisabled         types.Bool   `tfsdk:"agents_disabled"`
 	DatabaseCount          types.Int64  `tfsdk:"database_count"`
 	ActiveConnections      types.Int64  `tfsdk:"active_connections"`
 	Status                 types.String `tfsdk:"status"`
@@ -54,8 +58,20 @@ type projectResourceModel struct {
 	PrimaryDatabaseID      types.String `tfsdk:"primary_database_id"`
 }
 
+type allowedCidrsElemModel struct {
+	Cidr  types.String `tfsdk:"cidr"`
+	Label types.String `tfsdk:"label"`
+}
+
 func NewProjectResource() resource.Resource {
 	return &projectResource{}
+}
+
+func allowedCidrsElemAttrTypes() map[string]attr.Type {
+	return map[string]attr.Type{
+		"cidr":  types.StringType,
+		"label": types.StringType,
+	}
 }
 
 func (r *projectResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -102,6 +118,15 @@ func (r *projectResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 					stringplanmodifier.UseStateForUnknown(),
 				},
 			},
+			"self_hosted": schema.BoolAttribute{
+				Description: "When true, this project's data plane runs in the customer's own VPC/cluster (BYOC): the control plane does not provision hosted infra, and a self-hosted proxy dials home over the config/audit gRPC stream. Requires the Scale or enterprise plan.\n",
+				Optional:    true,
+				Computed:    true,
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.RequiresReplace(),
+					boolplanmodifier.UseStateForUnknown(),
+				},
+			},
 			"proxy_host": schema.StringAttribute{
 				Description: "Proxy hostname for connecting through PgBeam (e.g., myproject.proxy.pgbeam.app).",
 				Computed:    true,
@@ -130,13 +155,32 @@ func (r *projectResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 					int64planmodifier.UseStateForUnknown(),
 				},
 			},
-			"allowed_cidrs": schema.ListAttribute{
+			"allowed_cidrs": schema.ListNestedAttribute{
 				Description: "IP filtering rules as CIDR ranges with optional labels. When non-empty, only connections from matching IPs are accepted. Empty array means all IPs are allowed (default). Both IPv4 (e.g. 10.0.0.0/8) and IPv6 (e.g. 2001:db8::/32) are supported.\n",
 				Optional:    true,
-				ElementType: types.StringType,
+				NestedObject: schema.NestedAttributeObject{
+					Attributes: map[string]schema.Attribute{
+						"cidr": schema.StringAttribute{
+							Description: "CIDR range in IPv4 (e.g. 203.0.113.0/24) or IPv6 (e.g. 2001:db8::/32) notation. A plain IP without prefix length defaults to /32 (IPv4) or /128 (IPv6).\n",
+							Required:    true,
+						},
+						"label": schema.StringAttribute{
+							Description: "Optional human-readable label for this CIDR entry (e.g. \"Office\", \"VPC\").",
+							Optional:    true,
+						},
+					},
+				},
 			},
 			"default_policy_profile_id": schema.StringAttribute{
 				Description: "When set, passthrough/human connections are enforced against this policy profile.",
+				Optional:    true,
+			},
+			"residency": schema.StringAttribute{
+				Description: "Data-residency requirement for the project. \"any\" (default) lets queries be served from the nearest data-plane metro. \"us\" or \"eu\" require the serving metro to be in that jurisdiction; the proxy fails a connection closed when it is served from a metro outside the required jurisdiction, so regulated workloads never process outside their permitted region.\n",
+				Optional:    true,
+			},
+			"agents_disabled": schema.BoolAttribute{
+				Description: "Project-level kill-switch. When true, ALL agent-credential connections to this project are blocked at the proxy and live agent sessions are dropped within seconds. Passthrough/human connections are unaffected.\n",
 				Optional:    true,
 			},
 			"database_count": schema.Int64Attribute{
@@ -229,17 +273,35 @@ func (r *projectResource) Create(ctx context.Context, req resource.CreateRequest
 	updateReq := pgbeam.UpdateProjectRequest{}
 	needsPostCreateUpdate := false
 	if !plan.AllowedCidrs.IsNull() && !plan.AllowedCidrs.IsUnknown() {
-		var v []string
-		resp.Diagnostics.Append(plan.AllowedCidrs.ElementsAs(ctx, &v, false)...)
+		var allowedCidrsElems []allowedCidrsElemModel
+		resp.Diagnostics.Append(plan.AllowedCidrs.ElementsAs(ctx, &allowedCidrsElems, false)...)
 		if resp.Diagnostics.HasError() {
 			return
 		}
-		updateReq.AllowedCidrs = &v
+		allowedCidrsEntries := make([]pgbeam.CidrEntry, len(allowedCidrsElems))
+		for i, e := range allowedCidrsElems {
+			tmpLabel := e.Label.ValueString()
+			allowedCidrsEntries[i] = pgbeam.CidrEntry{
+				Cidr:  e.Cidr.ValueString(),
+				Label: &tmpLabel,
+			}
+		}
+		updateReq.AllowedCidrs = &allowedCidrsEntries
 		needsPostCreateUpdate = true
 	}
 	if !plan.DefaultPolicyProfileID.IsNull() && !plan.DefaultPolicyProfileID.IsUnknown() {
 		v := plan.DefaultPolicyProfileID.ValueString()
 		updateReq.DefaultPolicyProfileId = &v
+		needsPostCreateUpdate = true
+	}
+	if !plan.Residency.IsNull() && !plan.Residency.IsUnknown() {
+		v := pgbeam.DataResidency(plan.Residency.ValueString())
+		updateReq.Residency = &v
+		needsPostCreateUpdate = true
+	}
+	if !plan.AgentsDisabled.IsNull() && !plan.AgentsDisabled.IsUnknown() {
+		v := plan.AgentsDisabled.ValueBool()
+		updateReq.AgentsDisabled = &v
 		needsPostCreateUpdate = true
 	}
 	if !plan.Status.IsNull() && !plan.Status.IsUnknown() {
@@ -332,14 +394,22 @@ func (r *projectResource) Update(ctx context.Context, req resource.UpdateRequest
 	}
 
 	if !plan.AllowedCidrs.Equal(state.AllowedCidrs) {
-		var v []string
 		if !plan.AllowedCidrs.IsNull() && !plan.AllowedCidrs.IsUnknown() {
-			resp.Diagnostics.Append(plan.AllowedCidrs.ElementsAs(ctx, &v, false)...)
+			var allowedCidrsElems []allowedCidrsElemModel
+			resp.Diagnostics.Append(plan.AllowedCidrs.ElementsAs(ctx, &allowedCidrsElems, false)...)
 			if resp.Diagnostics.HasError() {
 				return
 			}
+			allowedCidrsEntries := make([]pgbeam.CidrEntry, len(allowedCidrsElems))
+			for i, e := range allowedCidrsElems {
+				tmpLabel := e.Label.ValueString()
+				allowedCidrsEntries[i] = pgbeam.CidrEntry{
+					Cidr:  e.Cidr.ValueString(),
+					Label: &tmpLabel,
+				}
+			}
+			updateReq.AllowedCidrs = &allowedCidrsEntries
 		}
-		updateReq.AllowedCidrs = &v
 		hasChanges = true
 	}
 
@@ -351,6 +421,18 @@ func (r *projectResource) Update(ctx context.Context, req resource.UpdateRequest
 			v := plan.DefaultPolicyProfileID.ValueString()
 			updateReq.DefaultPolicyProfileId = &v
 		}
+		hasChanges = true
+	}
+
+	if !plan.Residency.Equal(state.Residency) {
+		v := pgbeam.DataResidency(plan.Residency.ValueString())
+		updateReq.Residency = &v
+		hasChanges = true
+	}
+
+	if !plan.AgentsDisabled.Equal(state.AgentsDisabled) {
+		v := plan.AgentsDisabled.ValueBool()
+		updateReq.AgentsDisabled = &v
 		hasChanges = true
 	}
 
@@ -426,13 +508,18 @@ func (r *projectResource) mapProjectToState(ctx context.Context, state *projectR
 		tagsList, d := types.ListValue(types.StringType, tagValues)
 		diags.Append(d...)
 		state.Tags = tagsList
-	} else if !state.Tags.IsNull() {
+	} else {
 		state.Tags = types.ListNull(types.StringType)
 	}
 	if resp.Cloud != nil && string(*resp.Cloud) != "" {
 		state.Cloud = types.StringValue(string(*resp.Cloud))
 	} else {
 		state.Cloud = types.StringNull()
+	}
+	if resp.SelfHosted != nil {
+		state.SelfHosted = types.BoolValue(*resp.SelfHosted)
+	} else {
+		state.SelfHosted = types.BoolNull()
 	}
 	if resp.ProxyHost != nil {
 		state.ProxyHost = types.StringValue(*resp.ProxyHost)
@@ -455,20 +542,37 @@ func (r *projectResource) mapProjectToState(ctx context.Context, state *projectR
 		state.MaxConnections = types.Int64Value(0)
 	}
 	if resp.AllowedCidrs != nil && len(*resp.AllowedCidrs) > 0 {
-		tagValues := make([]attr.Value, len(*resp.AllowedCidrs))
-		for i, t := range *resp.AllowedCidrs {
-			tagValues[i] = types.StringValue(t)
+		allowedCidrsValues := make([]attr.Value, len(*resp.AllowedCidrs))
+		for i, e := range *resp.AllowedCidrs {
+			labelV := types.StringNull()
+			if e.Label != nil {
+				labelV = types.StringValue(*e.Label)
+			}
+			allowedCidrsValues[i] = types.ObjectValueMust(allowedCidrsElemAttrTypes(), map[string]attr.Value{
+				"cidr":  types.StringValue(e.Cidr),
+				"label": labelV,
+			})
 		}
-		tagsList, d := types.ListValue(types.StringType, tagValues)
-		diags.Append(d...)
-		state.AllowedCidrs = tagsList
-	} else if !state.AllowedCidrs.IsNull() {
-		state.AllowedCidrs = types.ListNull(types.StringType)
+		allowedCidrsList, allowedCidrsD := types.ListValue(types.ObjectType{AttrTypes: allowedCidrsElemAttrTypes()}, allowedCidrsValues)
+		diags.Append(allowedCidrsD...)
+		state.AllowedCidrs = allowedCidrsList
+	} else {
+		state.AllowedCidrs = types.ListNull(types.ObjectType{AttrTypes: allowedCidrsElemAttrTypes()})
 	}
 	if resp.DefaultPolicyProfileId != nil {
 		state.DefaultPolicyProfileID = types.StringValue(*resp.DefaultPolicyProfileId)
 	} else {
 		state.DefaultPolicyProfileID = types.StringNull()
+	}
+	if resp.Residency != nil && string(*resp.Residency) != "" {
+		state.Residency = types.StringValue(string(*resp.Residency))
+	} else {
+		state.Residency = types.StringNull()
+	}
+	if resp.AgentsDisabled != nil {
+		state.AgentsDisabled = types.BoolValue(*resp.AgentsDisabled)
+	} else {
+		state.AgentsDisabled = types.BoolNull()
 	}
 	if resp.DatabaseCount != nil {
 		state.DatabaseCount = types.Int64Value(int64(*resp.DatabaseCount))

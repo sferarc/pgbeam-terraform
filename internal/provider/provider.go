@@ -9,7 +9,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/provider/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/types"
-	pgbeam "github.com/pgbeam/pgbeam-go"
+	pgbeam "go.pgbeam.com/sdk"
 )
 
 var _ provider.Provider = (*pgbeamProvider)(nil)
@@ -90,5 +90,5 @@ func (p *pgbeamProvider) Resources(_ context.Context) []func() resource.Resource
 }
 
 func (p *pgbeamProvider) DataSources(_ context.Context) []func() datasource.DataSource {
-	return nil
+	return pgbeamDataSources()
 }

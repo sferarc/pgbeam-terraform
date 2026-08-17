@@ -15,40 +15,109 @@ terraform {
 }
 
 provider "pgbeam" {
-  api_token = var.pgbeam_api_token
+  api_key = var.pgbeam_api_key
 }
 
 resource "pgbeam_project" "main" {
   name   = "my-project"
   org_id = var.org_id
-  region = "us-east-1"
 }
 
 resource "pgbeam_database" "primary" {
   project_id = pgbeam_project.main.id
-  name       = "primary"
   host       = var.db_host
   port       = 5432
-  database   = "mydb"
+  name       = "mydb"
   username   = var.db_user
   password   = var.db_password
+  ssl_mode   = "require"
 }
 ```
 
+A project does not take a `region`; PgBeam serves every project from every
+region and routes each client to the nearest one automatically. On
+`pgbeam_database`, `name` is the PostgreSQL database name on your server.
+
 ## Resources
 
-| Resource               | Description                          |
-| ---------------------- | ------------------------------------ |
-| `pgbeam_project`       | PgBeam project                       |
-| `pgbeam_database`      | PostgreSQL database connection       |
-| `pgbeam_replica`       | Read replica configuration           |
-| `pgbeam_custom_domain` | Custom domain for connection strings |
-| `pgbeam_cache_rule`    | Query caching rule                   |
-| `pgbeam_spend_limit`   | Budget controls                      |
+| Resource                  | Description                                                |
+| ------------------------- | ---------------------------------------------------------- |
+| `pgbeam_project`          | PgBeam project                                             |
+| `pgbeam_database`         | PostgreSQL database connection                             |
+| `pgbeam_replica`          | Read replica configuration                                 |
+| `pgbeam_custom_domain`    | Custom domain for connection strings                       |
+| `pgbeam_cache_rule`       | Query caching rule                                         |
+| `pgbeam_spend_limit`      | Budget controls                                            |
+| `pgbeam_agent_credential` | Scoped agent credential (one-time secrets)                 |
+| `pgbeam_webhook_endpoint` | Event delivery endpoint                                    |
+| `pgbeam_policy_profile`   | Policy profile (access mode, allowlists, masking, budgets) |
+
+## Agent gateway
+
+The agent gateway issues scoped,
+policy-enforced database credentials for AI agents and delivers audit/anomaly
+events to webhook endpoints.
+
+```hcl
+resource "pgbeam_webhook_endpoint" "audit" {
+  project_id  = pgbeam_project.main.id
+  url         = "https://example.com/hooks/pgbeam"
+  format      = "json"
+  event_types = ["blocked", "anomaly", "approval"]
+  secret      = var.webhook_secret # write-only; never read back
+  enabled     = true
+}
+
+resource "pgbeam_agent_credential" "analytics" {
+  project_id        = pgbeam_project.main.id
+  policy_profile_id = var.policy_profile_id
+  name              = "Claude Code (analytics)"
+  principal_type    = "agent"
+}
+
+# One-time secrets returned only at creation. They are stored in state, marked
+# sensitive, and cannot be retrieved again — rotate by replacing the resource.
+output "agent_connection_string" {
+  value     = pgbeam_agent_credential.analytics.connection_string
+  sensitive = true
+}
+
+output "agent_mcp_url" {
+  value = pgbeam_agent_credential.analytics.mcp_url
+}
+
+output "agent_mcp_token" {
+  value     = pgbeam_agent_credential.analytics.mcp_token
+  sensitive = true
+}
+```
+
+> **Agent credential secrets caveat.** `connection_string` and `mcp_token` are
+> generated once at creation and are never returned by later reads (`mcp_url` is
+> not secret). They are persisted in Terraform state as sensitive computed
+> outputs. To rotate, taint or replace the resource
+> (`terraform apply -replace=pgbeam_agent_credential.analytics`).
+
+Manage policies as code with the `pgbeam_policy_profile` resource, then
+reference its ID wherever a profile is required:
+
+```hcl
+resource "pgbeam_policy_profile" "read_only" {
+  project_id  = pgbeam_project.main.id
+  name        = "read-only"
+  access_mode = "read_only"
+}
+```
+
+Reference `pgbeam_policy_profile.read_only.id` wherever a profile ID is required:
+`policy_profile_id` on `pgbeam_agent_credential` (see the Agent gateway example
+above), or `default_policy_profile_id` on `pgbeam_project` to enforce a profile
+on passthrough/human connections. Keeping the profile in Terraform puts the most
+security-sensitive primitive under `terraform plan` drift detection.
 
 ## Authentication
 
-Set the `PGBEAM_API_TOKEN` environment variable or configure the `api_token`
+Set the `PGBEAM_API_KEY` environment variable or configure the `api_key`
 argument in the provider block.
 
 ## Documentation

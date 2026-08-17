@@ -12,5 +12,9 @@ func pgbeamResources() []func() resource.Resource {
 		NewCustomDomainResource,
 		NewCacheRuleResource,
 		NewSpendLimitResource,
+		NewAgentCredentialResource,
+		NewPolicyProfileResource,
+		NewWebhookEndpointResource,
+		NewSelfHostEnrollmentResource,
 	}
 }
