@@ -214,48 +214,44 @@ func (r *webhookEndpointResource) Update(ctx context.Context, req resource.Updat
 		return
 	}
 
-	updateReq := pgbeam.WebhookEndpointInput{}
-	hasChanges := false
+	hasChanges := !plan.URL.Equal(state.URL) ||
+		!plan.Format.Equal(state.Format) ||
+		!plan.EventTypes.Equal(state.EventTypes) ||
+		!plan.Enabled.Equal(state.Enabled) ||
+		!plan.Description.Equal(state.Description) ||
+		!plan.Secret.Equal(state.Secret)
 
-	if !plan.URL.Equal(state.URL) {
-		updateReq.Url = plan.URL.ValueString()
-		hasChanges = true
+	updateReq := pgbeam.WebhookEndpointInput{
+		Url: plan.URL.ValueString(),
 	}
 
-	if !plan.Format.Equal(state.Format) {
+	if !plan.Format.IsNull() && !plan.Format.IsUnknown() {
 		v := pgbeam.WebhookEndpointInputFormat(plan.Format.ValueString())
 		updateReq.Format = &v
-		hasChanges = true
 	}
 
-	if !plan.EventTypes.Equal(state.EventTypes) {
+	if !plan.EventTypes.IsNull() && !plan.EventTypes.IsUnknown() {
 		var v []string
-		if !plan.EventTypes.IsNull() && !plan.EventTypes.IsUnknown() {
-			resp.Diagnostics.Append(plan.EventTypes.ElementsAs(ctx, &v, false)...)
-			if resp.Diagnostics.HasError() {
-				return
-			}
+		resp.Diagnostics.Append(plan.EventTypes.ElementsAs(ctx, &v, false)...)
+		if resp.Diagnostics.HasError() {
+			return
 		}
 		updateReq.EventTypes = &v
-		hasChanges = true
 	}
 
-	if !plan.Enabled.Equal(state.Enabled) {
+	if !plan.Enabled.IsNull() && !plan.Enabled.IsUnknown() {
 		v := plan.Enabled.ValueBool()
 		updateReq.Enabled = &v
-		hasChanges = true
 	}
 
-	if !plan.Description.Equal(state.Description) {
+	if !plan.Description.IsNull() && !plan.Description.IsUnknown() {
 		v := plan.Description.ValueString()
 		updateReq.Description = &v
-		hasChanges = true
 	}
 
-	if !plan.Secret.Equal(state.Secret) {
+	if !plan.Secret.IsNull() && !plan.Secret.IsUnknown() {
 		v := plan.Secret.ValueString()
 		updateReq.Secret = &v
-		hasChanges = true
 	}
 
 	if hasChanges {

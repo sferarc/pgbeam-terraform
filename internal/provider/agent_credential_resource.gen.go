@@ -279,13 +279,10 @@ func (r *agentCredentialResource) Update(ctx context.Context, req resource.Updat
 		return
 	}
 
-	updateReq := pgbeam.UpdateAgentCredentialStatusRequest{}
-	hasChanges := false
+	hasChanges := !plan.Status.Equal(state.Status)
 
-	if !plan.Status.Equal(state.Status) {
-		v := pgbeam.UpdateAgentCredentialStatusRequestStatus(plan.Status.ValueString())
-		updateReq.Status = v
-		hasChanges = true
+	updateReq := pgbeam.UpdateAgentCredentialStatusRequest{
+		Status: pgbeam.UpdateAgentCredentialStatusRequestStatus(plan.Status.ValueString()),
 	}
 
 	if hasChanges {

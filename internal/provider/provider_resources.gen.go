@@ -16,5 +16,6 @@ func pgbeamResources() []func() resource.Resource {
 		NewPolicyProfileResource,
 		NewWebhookEndpointResource,
 		NewSelfHostEnrollmentResource,
+		NewHoneytokenResource,
 	}
 }

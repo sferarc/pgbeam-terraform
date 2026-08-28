@@ -460,175 +460,163 @@ func (r *policyProfileResource) Update(ctx context.Context, req resource.UpdateR
 		return
 	}
 
-	updateReq := pgbeam.PolicyProfileInput{}
-	hasChanges := false
+	hasChanges := !plan.Name.Equal(state.Name) ||
+		!plan.AccessMode.Equal(state.AccessMode) ||
+		!plan.TableAllowlist.Equal(state.TableAllowlist) ||
+		!plan.TableDenylist.Equal(state.TableDenylist) ||
+		!plan.MaskingRules.Equal(state.MaskingRules) ||
+		!plan.BudgetQueriesPerHour.Equal(state.BudgetQueriesPerHour) ||
+		!plan.BudgetQueriesPerDay.Equal(state.BudgetQueriesPerDay) ||
+		!plan.MaxRows.Equal(state.MaxRows) ||
+		!plan.StatementTimeoutMs.Equal(state.StatementTimeoutMs) ||
+		!plan.RowFilters.Equal(state.RowFilters) ||
+		!plan.WriteMode.Equal(state.WriteMode) ||
+		!plan.ApprovalMode.Equal(state.ApprovalMode) ||
+		!plan.ApprovalAutoMaxRows.Equal(state.ApprovalAutoMaxRows) ||
+		!plan.ApprovalTimeoutSeconds.Equal(state.ApprovalTimeoutSeconds) ||
+		!plan.MigrationSafety.Equal(state.MigrationSafety) ||
+		!plan.EgressBytesPerDay.Equal(state.EgressBytesPerDay) ||
+		!plan.MaxAffectedRows.Equal(state.MaxAffectedRows) ||
+		!plan.StatementRules.Equal(state.StatementRules)
 
-	if !plan.Name.Equal(state.Name) {
-		updateReq.Name = plan.Name.ValueString()
-		hasChanges = true
+	updateReq := pgbeam.PolicyProfileInput{
+		Name: plan.Name.ValueString(),
 	}
 
-	if !plan.AccessMode.Equal(state.AccessMode) {
+	if !plan.AccessMode.IsNull() && !plan.AccessMode.IsUnknown() {
 		v := pgbeam.PolicyProfileInputAccessMode(plan.AccessMode.ValueString())
 		updateReq.AccessMode = &v
-		hasChanges = true
 	}
 
-	if !plan.TableAllowlist.Equal(state.TableAllowlist) {
+	if !plan.TableAllowlist.IsNull() && !plan.TableAllowlist.IsUnknown() {
 		var v []string
-		if !plan.TableAllowlist.IsNull() && !plan.TableAllowlist.IsUnknown() {
-			resp.Diagnostics.Append(plan.TableAllowlist.ElementsAs(ctx, &v, false)...)
-			if resp.Diagnostics.HasError() {
-				return
-			}
+		resp.Diagnostics.Append(plan.TableAllowlist.ElementsAs(ctx, &v, false)...)
+		if resp.Diagnostics.HasError() {
+			return
 		}
 		updateReq.TableAllowlist = &v
-		hasChanges = true
 	}
 
-	if !plan.TableDenylist.Equal(state.TableDenylist) {
+	if !plan.TableDenylist.IsNull() && !plan.TableDenylist.IsUnknown() {
 		var v []string
-		if !plan.TableDenylist.IsNull() && !plan.TableDenylist.IsUnknown() {
-			resp.Diagnostics.Append(plan.TableDenylist.ElementsAs(ctx, &v, false)...)
-			if resp.Diagnostics.HasError() {
-				return
-			}
+		resp.Diagnostics.Append(plan.TableDenylist.ElementsAs(ctx, &v, false)...)
+		if resp.Diagnostics.HasError() {
+			return
 		}
 		updateReq.TableDenylist = &v
-		hasChanges = true
 	}
 
-	if !plan.MaskingRules.Equal(state.MaskingRules) {
-		if !plan.MaskingRules.IsNull() && !plan.MaskingRules.IsUnknown() {
-			var maskingRulesElems []maskingRulesElemModel
-			resp.Diagnostics.Append(plan.MaskingRules.ElementsAs(ctx, &maskingRulesElems, false)...)
-			if resp.Diagnostics.HasError() {
-				return
-			}
-			maskingRulesEntries := make([]pgbeam.MaskingRule, len(maskingRulesElems))
-			for i, e := range maskingRulesElems {
-				maskingRulesEntries[i] = pgbeam.MaskingRule{
-					Table:  e.Table.ValueString(),
-					Column: e.Column.ValueString(),
-					Kind:   pgbeam.MaskingRuleKind(e.Kind.ValueString()),
-				}
-			}
-			updateReq.MaskingRules = &maskingRulesEntries
+	if !plan.MaskingRules.IsNull() && !plan.MaskingRules.IsUnknown() {
+		var maskingRulesElems []maskingRulesElemModel
+		resp.Diagnostics.Append(plan.MaskingRules.ElementsAs(ctx, &maskingRulesElems, false)...)
+		if resp.Diagnostics.HasError() {
+			return
 		}
-		hasChanges = true
+		maskingRulesEntries := make([]pgbeam.MaskingRule, len(maskingRulesElems))
+		for i, e := range maskingRulesElems {
+			maskingRulesEntries[i] = pgbeam.MaskingRule{
+				Table:  e.Table.ValueString(),
+				Column: e.Column.ValueString(),
+				Kind:   pgbeam.MaskingRuleKind(e.Kind.ValueString()),
+			}
+		}
+		updateReq.MaskingRules = &maskingRulesEntries
 	}
 
-	if !plan.BudgetQueriesPerHour.Equal(state.BudgetQueriesPerHour) {
+	if !plan.BudgetQueriesPerHour.IsNull() && !plan.BudgetQueriesPerHour.IsUnknown() {
 		v := int(plan.BudgetQueriesPerHour.ValueInt64())
 		updateReq.BudgetQueriesPerHour = &v
-		hasChanges = true
 	}
 
-	if !plan.BudgetQueriesPerDay.Equal(state.BudgetQueriesPerDay) {
+	if !plan.BudgetQueriesPerDay.IsNull() && !plan.BudgetQueriesPerDay.IsUnknown() {
 		v := int(plan.BudgetQueriesPerDay.ValueInt64())
 		updateReq.BudgetQueriesPerDay = &v
-		hasChanges = true
 	}
 
-	if !plan.MaxRows.Equal(state.MaxRows) {
+	if !plan.MaxRows.IsNull() && !plan.MaxRows.IsUnknown() {
 		v := int(plan.MaxRows.ValueInt64())
 		updateReq.MaxRows = &v
-		hasChanges = true
 	}
 
-	if !plan.StatementTimeoutMs.Equal(state.StatementTimeoutMs) {
+	if !plan.StatementTimeoutMs.IsNull() && !plan.StatementTimeoutMs.IsUnknown() {
 		v := int(plan.StatementTimeoutMs.ValueInt64())
 		updateReq.StatementTimeoutMs = &v
-		hasChanges = true
 	}
 
-	if !plan.RowFilters.Equal(state.RowFilters) {
-		if !plan.RowFilters.IsNull() && !plan.RowFilters.IsUnknown() {
-			var rowFiltersElems []rowFiltersElemModel
-			resp.Diagnostics.Append(plan.RowFilters.ElementsAs(ctx, &rowFiltersElems, false)...)
-			if resp.Diagnostics.HasError() {
-				return
-			}
-			rowFiltersEntries := make([]pgbeam.RowFilter, len(rowFiltersElems))
-			for i, e := range rowFiltersElems {
-				rowFiltersEntries[i] = pgbeam.RowFilter{
-					Table:     e.Table.ValueString(),
-					Predicate: e.Predicate.ValueString(),
-				}
-			}
-			updateReq.RowFilters = &rowFiltersEntries
+	if !plan.RowFilters.IsNull() && !plan.RowFilters.IsUnknown() {
+		var rowFiltersElems []rowFiltersElemModel
+		resp.Diagnostics.Append(plan.RowFilters.ElementsAs(ctx, &rowFiltersElems, false)...)
+		if resp.Diagnostics.HasError() {
+			return
 		}
-		hasChanges = true
+		rowFiltersEntries := make([]pgbeam.RowFilter, len(rowFiltersElems))
+		for i, e := range rowFiltersElems {
+			rowFiltersEntries[i] = pgbeam.RowFilter{
+				Table:     e.Table.ValueString(),
+				Predicate: e.Predicate.ValueString(),
+			}
+		}
+		updateReq.RowFilters = &rowFiltersEntries
 	}
 
-	if !plan.WriteMode.Equal(state.WriteMode) {
+	if !plan.WriteMode.IsNull() && !plan.WriteMode.IsUnknown() {
 		v := pgbeam.PolicyProfileInputWriteMode(plan.WriteMode.ValueString())
 		updateReq.WriteMode = &v
-		hasChanges = true
 	}
 
-	if !plan.ApprovalMode.Equal(state.ApprovalMode) {
+	if !plan.ApprovalMode.IsNull() && !plan.ApprovalMode.IsUnknown() {
 		v := pgbeam.PolicyProfileInputApprovalMode(plan.ApprovalMode.ValueString())
 		updateReq.ApprovalMode = &v
-		hasChanges = true
 	}
 
-	if !plan.ApprovalAutoMaxRows.Equal(state.ApprovalAutoMaxRows) {
+	if !plan.ApprovalAutoMaxRows.IsNull() && !plan.ApprovalAutoMaxRows.IsUnknown() {
 		v := int(plan.ApprovalAutoMaxRows.ValueInt64())
 		updateReq.ApprovalAutoMaxRows = &v
-		hasChanges = true
 	}
 
-	if !plan.ApprovalTimeoutSeconds.Equal(state.ApprovalTimeoutSeconds) {
+	if !plan.ApprovalTimeoutSeconds.IsNull() && !plan.ApprovalTimeoutSeconds.IsUnknown() {
 		v := int(plan.ApprovalTimeoutSeconds.ValueInt64())
 		updateReq.ApprovalTimeoutSeconds = &v
-		hasChanges = true
 	}
 
-	if !plan.MigrationSafety.Equal(state.MigrationSafety) {
+	if !plan.MigrationSafety.IsNull() && !plan.MigrationSafety.IsUnknown() {
 		v := pgbeam.PolicyProfileInputMigrationSafety(plan.MigrationSafety.ValueString())
 		updateReq.MigrationSafety = &v
-		hasChanges = true
 	}
 
-	if !plan.EgressBytesPerDay.Equal(state.EgressBytesPerDay) {
+	if !plan.EgressBytesPerDay.IsNull() && !plan.EgressBytesPerDay.IsUnknown() {
 		v := plan.EgressBytesPerDay.ValueInt64()
 		updateReq.EgressBytesPerDay = &v
-		hasChanges = true
 	}
 
-	if !plan.MaxAffectedRows.Equal(state.MaxAffectedRows) {
+	if !plan.MaxAffectedRows.IsNull() && !plan.MaxAffectedRows.IsUnknown() {
 		v := int(plan.MaxAffectedRows.ValueInt64())
 		updateReq.MaxAffectedRows = &v
-		hasChanges = true
 	}
 
-	if !plan.StatementRules.Equal(state.StatementRules) {
-		if !plan.StatementRules.IsNull() && !plan.StatementRules.IsUnknown() {
-			var statementRulesVar statementRulesModel
-			resp.Diagnostics.Append(plan.StatementRules.As(ctx, &statementRulesVar, objectAsOptions())...)
+	if !plan.StatementRules.IsNull() && !plan.StatementRules.IsUnknown() {
+		var statementRulesVar statementRulesModel
+		resp.Diagnostics.Append(plan.StatementRules.As(ctx, &statementRulesVar, objectAsOptions())...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		var statementRulesAllow []string
+		if !statementRulesVar.Allow.IsNull() && !statementRulesVar.Allow.IsUnknown() {
+			resp.Diagnostics.Append(statementRulesVar.Allow.ElementsAs(ctx, &statementRulesAllow, false)...)
 			if resp.Diagnostics.HasError() {
 				return
 			}
-			var statementRulesAllow []string
-			if !statementRulesVar.Allow.IsNull() && !statementRulesVar.Allow.IsUnknown() {
-				resp.Diagnostics.Append(statementRulesVar.Allow.ElementsAs(ctx, &statementRulesAllow, false)...)
-				if resp.Diagnostics.HasError() {
-					return
-				}
+		}
+		var statementRulesDeny []string
+		if !statementRulesVar.Deny.IsNull() && !statementRulesVar.Deny.IsUnknown() {
+			resp.Diagnostics.Append(statementRulesVar.Deny.ElementsAs(ctx, &statementRulesDeny, false)...)
+			if resp.Diagnostics.HasError() {
+				return
 			}
-			var statementRulesDeny []string
-			if !statementRulesVar.Deny.IsNull() && !statementRulesVar.Deny.IsUnknown() {
-				resp.Diagnostics.Append(statementRulesVar.Deny.ElementsAs(ctx, &statementRulesDeny, false)...)
-				if resp.Diagnostics.HasError() {
-					return
-				}
-			}
-			updateReq.StatementRules = &pgbeam.StatementRules{
-				Allow: &statementRulesAllow,
-				Deny:  &statementRulesDeny,
-			}
-			hasChanges = true
+		}
+		updateReq.StatementRules = &pgbeam.StatementRules{
+			Allow: &statementRulesAllow,
+			Deny:  &statementRulesDeny,
 		}
 	}
 
