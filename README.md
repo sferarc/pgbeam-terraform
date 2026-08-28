@@ -123,7 +123,7 @@ argument in the provider block.
 ## Documentation
 
 Full usage guide at
-[docs.pgbeam.com/terraform](https://docs.pgbeam.com/terraform).
+[pgbeam.com/docs/terraform](https://pgbeam.com/docs/terraform).
 
 ## Development
 
