@@ -1,7 +1,6 @@
 # PgBeam Terraform Provider
 
-Terraform provider for [PgBeam](https://pgbeam.com) — manage your globally
-distributed PostgreSQL proxy infrastructure as code.
+Terraform provider for [PgBeam](https://pgbeam.com) — manage your globally distributed PostgreSQL proxy infrastructure as code.
 
 ## Usage
 
@@ -34,29 +33,25 @@ resource "pgbeam_database" "primary" {
 }
 ```
 
-A project does not take a `region`; PgBeam serves every project from every
-region and routes each client to the nearest one automatically. On
-`pgbeam_database`, `name` is the PostgreSQL database name on your server.
+A project does not take a `region`; PgBeam serves every project from every region and routes each client to the nearest one automatically. On `pgbeam_database`, `name` is the PostgreSQL database name on your server.
 
 ## Resources
 
-| Resource                  | Description                                                |
-| ------------------------- | ---------------------------------------------------------- |
-| `pgbeam_project`          | PgBeam project                                             |
-| `pgbeam_database`         | PostgreSQL database connection                             |
-| `pgbeam_replica`          | Read replica configuration                                 |
-| `pgbeam_custom_domain`    | Custom domain for connection strings                       |
-| `pgbeam_cache_rule`       | Query caching rule                                         |
-| `pgbeam_spend_limit`      | Budget controls                                            |
-| `pgbeam_agent_credential` | Scoped agent credential (one-time secrets)                 |
-| `pgbeam_webhook_endpoint` | Event delivery endpoint                                    |
-| `pgbeam_policy_profile`   | Policy profile (access mode, allowlists, masking, budgets) |
+| Resource | Description |
+| --- | --- |
+| `pgbeam_project` | PgBeam project |
+| `pgbeam_database` | PostgreSQL database connection |
+| `pgbeam_replica` | Read replica configuration |
+| `pgbeam_custom_domain` | Custom domain for connection strings |
+| `pgbeam_cache_rule` | Query caching rule |
+| `pgbeam_spend_limit` | Budget controls |
+| `pgbeam_agent_credential` | Scoped agent credential (one-time secrets) |
+| `pgbeam_webhook_endpoint` | Event delivery endpoint |
+| `pgbeam_policy_profile` | Policy profile (access mode, allowlists, masking, budgets) |
 
 ## Agent gateway
 
-The agent gateway issues scoped,
-policy-enforced database credentials for AI agents and delivers audit/anomaly
-events to webhook endpoints.
+The agent gateway issues scoped, policy-enforced database credentials for AI agents and delivers audit/anomaly events to webhook endpoints.
 
 ```hcl
 resource "pgbeam_webhook_endpoint" "audit" {
@@ -92,14 +87,9 @@ output "agent_mcp_token" {
 }
 ```
 
-> **Agent credential secrets caveat.** `connection_string` and `mcp_token` are
-> generated once at creation and are never returned by later reads (`mcp_url` is
-> not secret). They are persisted in Terraform state as sensitive computed
-> outputs. To rotate, taint or replace the resource
-> (`terraform apply -replace=pgbeam_agent_credential.analytics`).
+> **Agent credential secrets caveat.** `connection_string` and `mcp_token` are generated once at creation and are never returned by later reads (`mcp_url` is not secret). They are persisted in Terraform state as sensitive computed outputs. To rotate, taint or replace the resource (`terraform apply -replace=pgbeam_agent_credential.analytics`).
 
-Manage policies as code with the `pgbeam_policy_profile` resource, then
-reference its ID wherever a profile is required:
+Manage policies as code with the `pgbeam_policy_profile` resource, then reference its ID wherever a profile is required:
 
 ```hcl
 resource "pgbeam_policy_profile" "read_only" {
@@ -109,21 +99,15 @@ resource "pgbeam_policy_profile" "read_only" {
 }
 ```
 
-Reference `pgbeam_policy_profile.read_only.id` wherever a profile ID is required:
-`policy_profile_id` on `pgbeam_agent_credential` (see the Agent gateway example
-above), or `default_policy_profile_id` on `pgbeam_project` to enforce a profile
-on passthrough/human connections. Keeping the profile in Terraform puts the most
-security-sensitive primitive under `terraform plan` drift detection.
+Reference `pgbeam_policy_profile.read_only.id` wherever a profile ID is required: `policy_profile_id` on `pgbeam_agent_credential` (see the Agent gateway example above), or `default_policy_profile_id` on `pgbeam_project` to enforce a profile on passthrough/human connections. Keeping the profile in Terraform puts the most security-sensitive primitive under `terraform plan` drift detection.
 
 ## Authentication
 
-Set the `PGBEAM_API_KEY` environment variable or configure the `api_key`
-argument in the provider block.
+Set the `PGBEAM_API_KEY` environment variable or configure the `api_key` argument in the provider block.
 
 ## Documentation
 
-Full usage guide at
-[pgbeam.com/docs/terraform](https://pgbeam.com/docs/terraform).
+Full usage guide at [pgbeam.com/docs/terraform](https://pgbeam.com/docs/terraform).
 
 ## Development
 
@@ -133,9 +117,7 @@ go build -o terraform-provider-pgbeam
 
 ## Contributing
 
-Issues and pull requests are welcome here. An issue is the right place to start
-for a bug, a wrong doc, or a missing capability; say what you ran, what
-happened, what you expected, and which version you were on.
+Issues and pull requests are welcome here. An issue is the right place to start for a bug, a wrong doc, or a missing capability; say what you ran, what happened, what you expected, and which version you were on.
 
 To build and test it locally:
 
@@ -144,9 +126,7 @@ go build ./...
 go test ./...
 ```
 
-Do not open a public issue for a suspected security vulnerability. Email
-security@pgbeam.com, or report it privately from this repository's Security
-tab.
+Do not open a public issue for a suspected security vulnerability. Email security@pgbeam.com, or report it privately from this repository's Security tab.
 
 ## License
 
