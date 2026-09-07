@@ -1,4 +1,4 @@
-module github.com/pgbeam/terraform-provider-pgbeam
+module github.com/sferarc/pgbeam-terraform
 
 go 1.25.0
 

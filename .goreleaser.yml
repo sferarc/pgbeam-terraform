@@ -1,9 +1,19 @@
 # GoReleaser config for the PgBeam Terraform provider.
 # Builds multi-arch binaries, signs the checksums with GPG, and publishes a
 # GitHub Release that the Terraform Registry picks up automatically.
-# Runs in the mirror repo (sferarc/pgbeam-terraform) after the release tag.
+# Runs in a clone of the mirror repo, checked out at the release tag, so that
+# the release lands on the public repository rather than on this monorepo.
 # Docs: https://goreleaser.com / https://developer.hashicorp.com/terraform/registry/providers/publishing
 version: 2
+
+# Every filename the Terraform Registry ingests is derived from ProjectName, and
+# the registry matches them against `terraform-provider-{NAME}_...` exactly. Left
+# unset, GoReleaser takes ProjectName from the repository it runs in, which is
+# named for the mirror rather than for the provider, and every artifact would
+# have come out as `pgbeam-terraform_0.1.1_linux_amd64.zip`. The registry ignores
+# a release whose assets are named anything else, with no error anywhere: the
+# release publishes, and the version simply never appears.
+project_name: terraform-provider-pgbeam
 
 before:
   hooks:
@@ -39,6 +49,12 @@ archives:
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
 
 checksum:
+  # The manifest is checksummed alongside the archives. The registry verifies
+  # every asset it downloads against this file, so a manifest that is uploaded
+  # but not listed here is treated as missing.
+  extra_files:
+    - glob: "terraform-registry-manifest.json"
+      name_template: "{{ .ProjectName }}_{{ .Version }}_manifest.json"
   name_template: "{{ .ProjectName }}_{{ .Version }}_SHA256SUMS"
   algorithm: sha256
 
@@ -56,6 +72,12 @@ signs:
       - "${artifact}"
 
 release:
+  # terraform-registry-manifest.json declares the plugin protocol version the
+  # binaries speak. Without it in the release the registry rejects the version,
+  # because it has no way to know whether a given Terraform CLI can talk to it.
+  extra_files:
+    - glob: "terraform-registry-manifest.json"
+      name_template: "{{ .ProjectName }}_{{ .Version }}_manifest.json"
   draft: false
 
 changelog:

@@ -11,6 +11,11 @@
 # Output
 *.out
 
+# GoReleaser build output. Ignored rather than merely uncommitted: GoReleaser
+# refuses to release from a dirty tree, and it runs from a clone of the mirror
+# where this directory is the one thing it creates.
+dist/
+
 # Go workspace
 go.work
 go.work.sum
