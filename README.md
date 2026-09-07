@@ -33,7 +33,7 @@ resource "pgbeam_database" "primary" {
 }
 ```
 
-A project does not take a `region`; PgBeam serves every project from every region and routes each client to the nearest one automatically. On `pgbeam_database`, `name` is the PostgreSQL database name on your server.
+A project does not take a `region`: by default (`residency = "any"`) PgBeam serves it from every metro and routes each client to the nearest one. Set `residency` to `"us"` or `"eu"` to require the serving metro to be in that jurisdiction. Where a connection pool lives is a per-database choice, via `pool_region`. On `pgbeam_database`, `name` is the PostgreSQL database name on your server.
 
 ## Resources
 
