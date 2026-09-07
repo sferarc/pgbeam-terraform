@@ -150,7 +150,11 @@ func (r *webhookEndpointResource) Create(ctx context.Context, req resource.Creat
 		if resp.Diagnostics.HasError() {
 			return
 		}
-		createReq.EventTypes = &v
+		eventTypesValues := make([]pgbeam.WebhookEventType, len(v))
+		for i, s := range v {
+			eventTypesValues[i] = pgbeam.WebhookEventType(s)
+		}
+		createReq.EventTypes = &eventTypesValues
 	}
 
 	if !plan.Enabled.IsNull() && !plan.Enabled.IsUnknown() {
@@ -236,7 +240,11 @@ func (r *webhookEndpointResource) Update(ctx context.Context, req resource.Updat
 		if resp.Diagnostics.HasError() {
 			return
 		}
-		updateReq.EventTypes = &v
+		eventTypesValues := make([]pgbeam.WebhookEventType, len(v))
+		for i, s := range v {
+			eventTypesValues[i] = pgbeam.WebhookEventType(s)
+		}
+		updateReq.EventTypes = &eventTypesValues
 	}
 
 	if !plan.Enabled.IsNull() && !plan.Enabled.IsUnknown() {
@@ -326,7 +334,7 @@ func (r *webhookEndpointResource) mapWebhookEndpointToState(ctx context.Context,
 	if resp.EventTypes != nil && len(*resp.EventTypes) > 0 {
 		tagValues := make([]attr.Value, len(*resp.EventTypes))
 		for i, t := range *resp.EventTypes {
-			tagValues[i] = types.StringValue(t)
+			tagValues[i] = types.StringValue(string(t))
 		}
 		tagsList, d := types.ListValue(types.StringType, tagValues)
 		diags.Append(d...)
