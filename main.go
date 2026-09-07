@@ -6,7 +6,7 @@ import (
 	"log"
 
 	"github.com/hashicorp/terraform-plugin-framework/providerserver"
-	"github.com/sferarc/pgbeam-terraform/internal/provider"
+	"github.com/sferarc/terraform-provider-pgbeam/internal/provider"
 )
 
 var version = "dev"
