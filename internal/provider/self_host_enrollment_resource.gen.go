@@ -255,14 +255,24 @@ func (r *selfHostEnrollmentResource) ImportState(ctx context.Context, req resour
 // findSelfHostEnrollment lists self host enrollments and returns the one matching the given id.
 // Returns a not-found error if no match is found.
 func (r *selfHostEnrollmentResource) findSelfHostEnrollment(ctx context.Context, orgID string, SelfHostEnrollmentID string) (*pgbeam.SelfHostEnrollment, error) {
-	listResp, err := r.client.Platform.ListSelfHostEnrollments(ctx, orgID)
-	if err != nil {
-		return nil, err
-	}
-	for _, SelfHostEnrollment := range listResp.Enrollments {
-		if SelfHostEnrollment.Id == SelfHostEnrollmentID {
-			return &SelfHostEnrollment, nil
+	var pageToken *string
+	for {
+		params := &pgbeam.ListSelfHostEnrollmentsParams{
+			PageToken: pageToken,
 		}
+		listResp, err := r.client.Platform.ListSelfHostEnrollments(ctx, orgID, params)
+		if err != nil {
+			return nil, err
+		}
+		for _, SelfHostEnrollment := range listResp.Enrollments {
+			if SelfHostEnrollment.Id == SelfHostEnrollmentID {
+				return &SelfHostEnrollment, nil
+			}
+		}
+		if listResp.NextPageToken == nil || *listResp.NextPageToken == "" {
+			break
+		}
+		pageToken = listResp.NextPageToken
 	}
 	return nil, &pgbeam.APIError{StatusCode: 404, Status: "404 Not Found", Body: fmt.Sprintf("self host enrollment %s not found", SelfHostEnrollmentID)}
 }
