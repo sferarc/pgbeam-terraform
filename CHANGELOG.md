@@ -1,5 +1,11 @@
 # @pgbeam/terraform
 
+## 0.1.2
+
+### Patch Changes
+
+- c645088: fix(providers): the published Terraform provider pinned a stale Go SDK because its go.mod did not carry the sentinel the release rewrites
+
 ## 0.1.1
 
 ### Patch Changes
